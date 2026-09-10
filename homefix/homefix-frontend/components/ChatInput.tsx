@@ -8,6 +8,11 @@ interface ChatInputProps {
   isLoading: boolean;
 }
 
+// Automatically strips any trailing slash from the environment variable
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+).replace(/\/$/, "");
+
 export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
   const [text, setText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -21,7 +26,13 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Determine browser-supported audio format
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -30,8 +41,9 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/m4a" });
-        await handleAudioUpload(audioBlob);
+        const extension = mimeType.includes("webm") ? "webm" : "m4a";
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        await handleAudioUpload(audioBlob, extension);
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -49,22 +61,27 @@ export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) 
     }
   };
 
-  const handleAudioUpload = async (blob: Blob) => {
+  const handleAudioUpload = async (blob: Blob, extension: string) => {
     setIsTranscribing(true);
     try {
       const formData = new FormData();
-      formData.append("file", blob, "recording.m4a");
+      formData.append("file", blob, `recording.${extension}`);
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transcribe-audio`, {
+      const res = await fetch(`${API_URL}/api/transcribe`, {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) throw new Error("Audio transcription failed");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Audio transcription failed");
+      }
+
       const data = await res.json();
       setText((prev) => (prev ? `${prev} ${data.text}` : data.text));
     } catch (err) {
-      console.error(err);
+      console.error("Transcription error:", err);
+      alert("Audio transcription failed. Ensure your backend server is active.");
     } finally {
       setIsTranscribing(false);
     }

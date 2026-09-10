@@ -14,11 +14,11 @@ from langchain_core.tools import tool
 # Initialize FastAPI App
 app = FastAPI(title="HomeFix Copilot Backend")
 
-# 1. CORS Configuration (Fixes Codespaces / Browser blocking)
+# 1. CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # Set to False when using wildcard "*" origins
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -46,12 +46,10 @@ def auto_fetch_manual_from_web(query: str) -> str:
             url = result.get("href", "")
             if url.endswith(".pdf"):
                 try:
-                    # Optimized 3-second timeout to prevent latency hanging
                     resp = requests.get(url, timeout=3, headers={"User-Agent": "Mozilla/5.0"})
                     if resp.status_code == 200:
                         pdf_file = io.BytesIO(resp.content)
                         reader = PdfReader(pdf_file)
-                        # Process first 5 pages max to optimize parsing speed
                         extracted = ""
                         for page in reader.pages[:5]:
                             extracted += page.extract_text() or ""
@@ -147,7 +145,7 @@ async def analyze_image_endpoint(
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Primary Chat & RAG Diagnostic Endpoint using gpt-oss-120b."""
+    """Primary Chat & RAG Diagnostic Endpoint using openai/gpt-oss-120b."""
     try:
         user_message = request.message
         
@@ -176,7 +174,7 @@ async def chat_endpoint(request: ChatRequest):
         messages.append({"role": "user", "content": user_message})
 
         completion = groq_client.chat.completions.create(
-            model="gpt-oss-120b",
+            model="openai/gpt-oss-120b",
             messages=messages,
             temperature=0.2,
             max_tokens=800,
@@ -194,6 +192,23 @@ async def chat_endpoint(request: ChatRequest):
         print(f"Chat API Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Chat processing error: {str(e)}")
 
+@app.post("/api/transcribe")
+async def transcribe_audio_endpoint(file: UploadFile = File(...)):
+    """Audio Endpoint utilizing Whisper for fast voice-to-text transcription."""
+    try:
+        contents = await file.read()
+        filename = file.filename if file.filename else "audio.wav"
+        mime_type = file.content_type if file.content_type else "audio/wav"
+
+        transcription = groq_client.audio.transcriptions.create(
+            file=(filename, contents, mime_type),
+            model="whisper-large-v3-turbo",
+            response_format="json",
+        )
+        return {"text": transcription.text}
+    except Exception as e:
+        print(f"Transcription API Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Audio transcription error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

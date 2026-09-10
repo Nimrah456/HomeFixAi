@@ -1,4 +1,12 @@
 .env
+.env.local
 __pycache__/
-*.db*
+*.pyc
+node_modules/
+.next/
+out/
+
+*.db
+*.db-shm
+*.db-wal
 chroma_db/
