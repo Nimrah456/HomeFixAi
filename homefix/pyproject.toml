@@ -25,6 +25,7 @@ dependencies = [
     "pypdf>=6.16.2",
     "pypdf2>=3.0.1",
     "python-dotenv>=1.2.3",
+    "python-multipart>=0.0.32",
     "requests>=2.34.2",
     "sentence-transformers>=6.0.0",
     "uvicorn>=0.52.4",
